@@ -1,0 +1,52 @@
+---
+- name: Configure application host
+  hosts: servers
+  become: true
+
+  tasks:
+    - name: Create deployer user
+      ansible.builtin.user:
+        name: deployer
+        state: present
+        shell: /bin/bash
+        create_home: true
+        groups:
+          - sudo
+        append: true
+
+    - name: Configure passwordless sudo for deployer
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/deployer
+        content: "deployer ALL=(ALL:ALL) NOPASSWD: ALL\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: /usr/sbin/visudo -cf %s
+
+    - name: Add SSH key for deployer
+      ansible.posix.authorized_key:
+        user: deployer
+        state: present
+        key: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/devops_hw_ed25519.pub') }}"
+
+    - name: Install Docker and Docker Compose
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Enable and start Docker
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Add deployer to docker group
+      ansible.builtin.user:
+        name: deployer
+        groups:
+          - docker
+        append: true
